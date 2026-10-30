@@ -133,11 +133,24 @@ export function createManipulative(f, onReset) {
       grp.style.transform = `translate(0px, ${restY}px)`;
     }
   };
+  // System gestures (notification swipe, app switcher, palm rejection) fire
+  // pointercancel instead of pointerup — always spring back, never merge.
+  const onCancel = e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag = null;
+    grp.classList.remove('dragging');
+    grp.style.transition = '';
+    gx = 0;
+    gy = restY;
+    grp.style.transform = `translate(0px, ${restY}px)`;
+  };
   grp.addEventListener('pointermove', onMove);
   grp.addEventListener('pointerup', onUp);
+  grp.addEventListener('pointercancel', onCancel);
   // Fallback for environments where pointer capture is unavailable
   stage.addEventListener('pointermove', onMove);
   stage.addEventListener('pointerup', onUp);
+  stage.addEventListener('pointercancel', onCancel);
 
   wrap.appendChild(stage);
 
@@ -148,12 +161,21 @@ export function createManipulative(f, onReset) {
   wrap.appendChild(resetBtn);
 
   // Shrink to the viewport: the fixed 10-wide stage plus reset button must
-  // fit portrait phones (320-430px). Applied once mounted.
+  // fit portrait phones (320-430px), and in solo mode the keypad must stay
+  // reachable, so vertical overflow also folds into the zoom. Applied once
+  // mounted; the session screen's overflow-y:auto remains the backstop.
   requestAnimationFrame(() => {
     const host = wrap.parentElement;
     if (!host) return;
-    const avail = host.clientWidth - 56; // reset button + gaps
-    if (avail > 0 && avail < stageW) stage.style.zoom = Math.max(0.55, avail / stageW);
+    const availW = host.clientWidth - 56; // reset button + gaps
+    let zoom = availW > 0 ? Math.min(1, availW / stageW) : 1;
+    const scr = document.getElementById('screen-session');
+    if (scr && scr.contains(host) && scr.scrollHeight > scr.clientHeight) {
+      const stageH = stage.offsetHeight;
+      const targetH = stageH - (scr.scrollHeight - scr.clientHeight);
+      if (stageH > 0 && targetH < stageH) zoom = Math.min(zoom, targetH / stageH);
+    }
+    if (zoom < 1) stage.style.zoom = Math.max(0.55, zoom);
   });
 
   return wrap;
