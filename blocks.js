@@ -106,21 +106,22 @@ export function createManipulative(f, onReset) {
   }
 
   grp.addEventListener('pointerdown', e => {
-    if (merged || b === 0) return;
+    // Ignore extra fingers: one pointer owns the drag until it lifts
+    if (merged || b === 0 || drag) return;
     e.preventDefault();
     try { grp.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
-    drag = { sx: e.clientX, sy: e.clientY, ox: gx, oy: gy };
+    drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, ox: gx, oy: gy };
     grp.classList.add('dragging');
   });
   const onMove = e => {
-    if (!drag) return;
+    if (!drag || e.pointerId !== drag.id) return;
     gx = drag.ox + (e.clientX - drag.sx);
     gy = drag.oy + (e.clientY - drag.sy);
     grp.style.transition = 'none';
     grp.style.transform = `translate(${gx}px, ${gy}px)`;
   };
-  const onUp = () => {
-    if (!drag) return;
+  const onUp = e => {
+    if (!drag || e.pointerId !== drag.id) return;
     drag = null;
     grp.classList.remove('dragging');
     grp.style.transition = '';
@@ -145,6 +146,15 @@ export function createManipulative(f, onReset) {
   resetBtn.textContent = '↺';
   resetBtn.addEventListener('click', () => onReset && onReset());
   wrap.appendChild(resetBtn);
+
+  // Shrink to the viewport: the fixed 10-wide stage plus reset button must
+  // fit portrait phones (320-430px). Applied once mounted.
+  requestAnimationFrame(() => {
+    const host = wrap.parentElement;
+    if (!host) return;
+    const avail = host.clientWidth - 56; // reset button + gaps
+    if (avail > 0 && avail < stageW) stage.style.zoom = Math.max(0.55, avail / stageW);
+  });
 
   return wrap;
 }

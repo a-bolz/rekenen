@@ -297,3 +297,8 @@ test('drill track spans the full plus and minus tables', () => {
     }
   }
 });
+
+test('bond display solves by replacing the x placeholder (feedback contract)', () => {
+  assert.equal(parseKey('7+_=10').display.replace('x', '3'), '7 + 3 = 10');
+  assert.equal(parseKey('10=7+_').display.replace('x', '3'), '10 = 7 + 3');
+});

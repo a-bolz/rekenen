@@ -174,6 +174,17 @@ export function saveSettings(settings) {
   save('settings', settings);
 }
 
+// Snapshot/restore for the results screen's reversible retro-pass.
+export function getProgressSnapshot() {
+  return JSON.stringify(load('progress') || {});
+}
+
+export function restoreProgress(snapshot) {
+  try {
+    save('progress', JSON.parse(snapshot));
+  } catch { /* malformed snapshot: keep current progress */ }
+}
+
 export function getLastErrors() {
   const v = load('lastErrors');
   return new Set(Array.isArray(v) ? v : []);

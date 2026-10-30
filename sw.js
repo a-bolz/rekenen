@@ -1,4 +1,4 @@
-const CACHE = 'rekenen-v8';
+const CACHE = 'rekenen-v9';
 const ASSETS = [
   '.', 'index.html', 'style.css', 'icon.svg', 'manifest.json',
   'app.js', 'facts.js', 'state.js', 'session.js', 'flow.js', 'keypad.js', 'visuals.js', 'blocks.js',

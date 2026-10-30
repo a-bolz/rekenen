@@ -201,3 +201,15 @@ test('amendFactStat flips a wrong record to correct and back', async () => {
   assert.equal(s.correct, 0);
   assert.equal(s.totalTime, 0);
 });
+
+test('progress snapshot/restore reverts a retro-pass', async () => {
+  const { getProgressSnapshot, restoreProgress } = await import('../state.js');
+  initProgress(track);
+  const before = getProgressSnapshot();
+  completeCell(track, 1, 8000);
+  assert.equal(initProgress(track)['tot10:1:8000'], 'completed');
+  restoreProgress(before);
+  assert.equal(initProgress(track)['tot10:1:8000'], 'available');
+  restoreProgress('{broken'); // malformed: keeps current progress
+  assert.equal(initProgress(track)['tot10:1:8000'], 'available');
+});

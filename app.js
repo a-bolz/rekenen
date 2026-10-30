@@ -4,7 +4,7 @@ import {
   makeKey, initProgress, completeCell, nextCell,
   getFactStats, updateFactStats, toggleFocus, amendFactStat,
   getSettings, saveSettings, exportState, importState,
-  getLastErrors, saveLastErrors,
+  getLastErrors, saveLastErrors, getProgressSnapshot, restoreProgress,
 } from './state.js';
 import { selectKeys, shuffle, isFout } from './session.js';
 import { createFlow, submitAnswer, feedbackDone } from './flow.js';
@@ -183,6 +183,9 @@ function renderSessionScreen() {
 
   document.getElementById('btn-abort').addEventListener('click', abortSession);
 
+  // With the keypad on screen, large question-visuals must shrink to fit
+  document.getElementById('question-visual').classList.toggle('compact', solo);
+
   if (solo) {
     current.keypad = createKeypad(entered => {
       current.keypad.lock();
@@ -218,14 +221,19 @@ function showItem() {
   const f = parseKey(key);
   const display = document.getElementById('fact-display');
   display.textContent = f.display;
-  display.style.display = current.blokjes === 'alleen' ? 'none' : '';
-  if (current.blokjes !== 'alleen') fitText(display);
+
+  const visualHtml = current.blokjes !== 'uit'
+    ? renderVisual(key, current.track.visual, 1, true) : '';
+  // 0+0 / 0−0 render zero dots — never hide the digits behind an empty visual
+  const hideDigits = current.blokjes === 'alleen' && visualHtml.includes('class="dot');
+  display.style.display = hideDigits ? 'none' : '';
+  if (!hideDigits) fitText(display);
 
   const qv = document.getElementById('question-visual');
   qv.classList.remove('manipulative');
-  qv.classList.toggle('solo-visual', current.blokjes === 'alleen');
-  if (current.blokjes !== 'uit') {
-    qv.innerHTML = renderVisual(key, current.track.visual, 1, true);
+  qv.classList.toggle('solo-visual', hideDigits);
+  if (visualHtml) {
+    qv.innerHTML = visualHtml;
     qv.classList.remove('hidden');
   } else {
     qv.innerHTML = '';
@@ -285,7 +293,8 @@ function clearTimer() {
 
 function handleAnswer(correct) {
   const key = currentKey();
-  const time = Date.now() - current.startTime;
+  // Cap recorded time so a walked-away item can't poison the weighting
+  const time = Math.min(Date.now() - current.startTime, current.tier * 4);
   const r = submitAnswer(current.flow, correct, time);
   if (!r) return;
   clearTimer();
@@ -307,7 +316,7 @@ function showFeedback(key, kind, durationMs) {
   const flow = current.flow;
   const f = parseKey(key);
   const answerText = f.op === 'bond'
-    ? f.display.replace('□', String(f.answer))
+    ? f.display.replace('x', String(f.answer))
     : `${f.display} = ${f.answer}`;
   const fb = document.getElementById('feedback');
   // Stretch/compress the dot reveal with the chosen duration (1 = authored timing)
@@ -423,11 +432,24 @@ function renderResults() {
       if (!r.correct) amendFactStat(r.key, r.override, r.time);
       const remaining = foutKeys();
       saveLastErrors(remaining);
-      if (current.type === 'exam' && !current.passed && remaining.length <= 1) {
-        current.passed = true;
-        completeCell(current.track, current.level, current.tier);
+      if (current.type === 'exam') {
+        const nowPassed = remaining.length <= 1;
+        if (nowPassed && !current.passed) {
+          // Snapshot progress so un-approving can revert the retro-pass
+          current.progressSnapshot = getProgressSnapshot();
+          current.passed = true;
+          completeCell(current.track, current.level, current.tier);
+        } else if (!nowPassed && current.passed && current.progressSnapshot) {
+          restoreProgress(current.progressSnapshot);
+          current.progressSnapshot = null;
+          current.passed = false;
+        }
       }
+      const list = container.querySelector('.results-list');
+      const scrollPos = list ? list.scrollTop : 0;
       renderResults();
+      const newList = container.querySelector('.results-list');
+      if (newList) newList.scrollTop = scrollPos;
     });
   });
 
@@ -505,7 +527,7 @@ function renderSettings() {
       <div class="seg-row" id="blokjes-seg">
         <button class="seg-btn${settings.blokjes === 'uit' ? ' active' : ''}" data-v="uit">Uit</button>
         <button class="seg-btn${settings.blokjes === 'erbij' ? ' active' : ''}" data-v="erbij">Erbij</button>
-        <button class="seg-btn${settings.blokjes === 'alleen' ? ' active' : ''}" data-v="alleen">Alleen blokjes</button>
+        <button class="seg-btn${settings.blokjes === 'alleen' ? ' active' : ''}" data-v="alleen">Alleen</button>
       </div>
       <div class="settings-item">
         <div>
