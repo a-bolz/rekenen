@@ -5,13 +5,36 @@ export function range(a, b) {
   return out;
 }
 
+// Fixed-seed PRNG (mulberry32) so sampling is deterministic across runs.
+// Shuffling before taking strided picks breaks the phase-locking between
+// the sampling stride and the generators' block structure.
+const SAMPLE_SEED = 0xc0ffee;
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 export function sampleEvenly(keys, max = 25) {
   if (keys.length <= max) return keys;
-  const out = [];
-  for (let i = 0; i < max; i++) {
-    out.push(keys[Math.round((i * (keys.length - 1)) / (max - 1))]);
+  const rand = mulberry32(SAMPLE_SEED);
+  const shuffled = keys.slice();
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
-  return out;
+  const picked = new Set();
+  for (let i = 0; i < max; i++) {
+    picked.add(shuffled[Math.round((i * (shuffled.length - 1)) / (max - 1))]);
+  }
+  // Keep the level listing human-readable: original list order.
+  return keys.filter(k => picked.has(k));
 }
 
 export function parseKey(key) {
@@ -84,7 +107,11 @@ function interleave(lists) {
 }
 
 function mix(lists) {
-  return sampleEvenly([...new Set(interleave(lists))]);
+  // Sample each source family first so every family is evenly represented
+  // and spread across its own range, then interleave, dedupe and cap.
+  const per = Math.ceil(25 / lists.length);
+  const sampled = lists.map(l => sampleEvenly(l, per));
+  return [...new Set(interleave(sampled))].slice(0, 25);
 }
 
 function dubbelen() { return range(1, 10).map(a => `${a}+${a}`); }

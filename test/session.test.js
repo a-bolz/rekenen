@@ -10,7 +10,7 @@ globalThis.localStorage = {
   clear: () => { store = {}; },
 };
 
-const { calculateWeight, selectKeys } = await import('../session.js');
+const { calculateWeight, selectKeys, shuffle } = await import('../session.js');
 const { updateFactStats, toggleFocus } = await import('../state.js');
 
 beforeEach(() => { store = {}; });
@@ -36,6 +36,18 @@ test('selectKeys returns requested count from the list', () => {
   const out = selectKeys(keys, 5000, 10, new Set());
   assert.equal(out.length, 10);
   for (const k of out) assert.ok(keys.includes(k));
+});
+
+test('shuffle returns an unbiased permutation of the input', () => {
+  const input = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+  const firstSeen = new Set();
+  for (let i = 0; i < 500; i++) {
+    const out = shuffle(input);
+    assert.deepEqual([...out].sort(), [...input].sort());
+    firstSeen.add(out[0]);
+  }
+  // Fisher–Yates: every element should reach position 0 within 500 runs
+  assert.equal(firstSeen.size, input.length);
 });
 
 test('heavily weighted key dominates selection', () => {

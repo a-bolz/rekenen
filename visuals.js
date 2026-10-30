@@ -1,7 +1,7 @@
 // visuals.js
 import { parseKey } from './facts.js';
 
-const COLORS = { p1: '#3b82f6', p2: '#22c55e', cross: '#d1d5db', mark: '#b91c1c' };
+export const COLORS = { p1: '#3b82f6', p2: '#22c55e', cross: '#d1d5db', mark: '#b91c1c' };
 
 function svgOpen(w, h) {
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`;
@@ -43,19 +43,44 @@ function renderTenFrame(f) {
 function renderHundredGrid(f) {
   const cell = 13, pad = 2;
   const w = 10 * cell + pad * 2, h = 10 * cell + pad * 2;
-  const p1 = f.op === '-' ? f.a - f.b : f.a;
-  const p2 = f.op === '-' ? 0 : f.b;
-  const crossed = f.op === '-' ? f.b : 0;
-  const total = p1 + p2 + crossed;
+  const linearDelay = i => Math.min(i * 8, 400);
+  const cells = Array(100).fill(null); // { fill, delay } per filled cell
+  const ta = Math.floor(f.a / 10), ua = f.a % 10;
+  const wholeTens = f.b > 0 && f.b % 10 === 0;
+  const tb = wholeTens ? f.b / 10 : 0;
+  const greenStart = ua > 0 ? ta + 1 : ta; // skip a's partial unit row so green rows are whole
+
+  if (f.op === '+' && wholeTens && greenStart + tb <= 10) {
+    // a linearly as blue: full tens rows plus unit cells in row ta
+    for (let i = 0; i < f.a; i++) cells[i] = { fill: COLORS.p1, delay: linearDelay(i) };
+    // b as whole green rows sliding in one after another
+    for (let r = 0; r < tb; r++)
+      for (let c = 0; c < 10; c++)
+        cells[(greenStart + r) * 10 + c] = { fill: COLORS.p2, delay: 400 + r * 150 };
+  } else if (f.op === '-' && wholeTens && tb <= ta) {
+    // a as blue, then the LAST tb full tens-rows of a greyed out row by row
+    for (let i = 0; i < (ta - tb) * 10; i++) cells[i] = { fill: COLORS.p1, delay: linearDelay(i) };
+    for (let r = 0; r < tb; r++)
+      for (let c = 0; c < 10; c++)
+        cells[(ta - tb + r) * 10 + c] = { fill: COLORS.cross, delay: 450 + r * 150 };
+    for (let i = ta * 10; i < f.a; i++) cells[i] = { fill: COLORS.p1, delay: linearDelay(i) };
+  } else {
+    // all other operand shapes: existing linear fill
+    const p1 = f.op === '-' ? f.a - f.b : f.a;
+    const p2 = f.op === '-' ? 0 : f.b;
+    const crossed = f.op === '-' ? f.b : 0;
+    for (let i = 0; i < p1 + p2 + crossed; i++) {
+      const fill = i < p1 ? COLORS.p1 : i < p1 + p2 ? COLORS.p2 : COLORS.cross;
+      cells[i] = { fill, delay: linearDelay(i) };
+    }
+  }
+
   let out = svgOpen(w, h);
   for (let i = 0; i < 100; i++) {
     const x = pad + (i % 10) * cell, y = pad + Math.floor(i / 10) * cell;
-    let fill = '#fff';
-    if (i < p1) fill = COLORS.p1;
-    else if (i < p1 + p2) fill = COLORS.p2;
-    else if (i < total) fill = COLORS.cross;
-    const cls = i < total ? ` class="dot" style="animation-delay:${Math.min(i * 8, 400)}ms"` : '';
-    out += `<rect${cls} x="${x}" y="${y}" width="${cell - 1}" height="${cell - 1}" fill="${fill}" stroke="#ccc" stroke-width="0.5"/>`;
+    const c = cells[i];
+    const cls = c ? ` class="dot" style="animation-delay:${c.delay}ms"` : '';
+    out += `<rect${cls} x="${x}" y="${y}" width="${cell - 1}" height="${cell - 1}" fill="${c ? c.fill : '#fff'}" stroke="#ccc" stroke-width="0.5"/>`;
   }
   return `<div class="visual">${out}</svg></div>`;
 }

@@ -618,3 +618,5 @@ html, body {
 @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
 .export-area { width: calc(100% - 32px); margin: 8px 16px; height: 120px; font-family: monospace; font-size: 11px; }
 .btn-abort { position: fixed; top: 14px; right: 10px; z-index: 20; background: none; border: none; font-size: 26px; line-height: 1; color: #b0b0b0; padding: 8px 12px; cursor: pointer; }
+.settings-list { flex: 1; min-height: 0; overflow-y: auto; }
+.btn:disabled { opacity: 0.4; cursor: default; }

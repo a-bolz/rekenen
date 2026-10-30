@@ -1,7 +1,12 @@
 // state.js
+
+// Flitsen lives on the same origin (a-bolz.github.io) and uses the bare
+// key names — the prefix keeps the two apps from corrupting each other.
+const NS = 'rekenen:';
+
 function load(key) {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(NS + key);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -9,7 +14,7 @@ function load(key) {
 }
 
 function save(key, data) {
-  localStorage.setItem(key, JSON.stringify(data));
+  localStorage.setItem(NS + key, JSON.stringify(data));
 }
 
 export function makeKey(trackId, levelId, tier) {
@@ -18,14 +23,50 @@ export function makeKey(trackId, levelId, tier) {
 
 export function initProgress(track) {
   const progress = load('progress') || {};
-  const firstKey = makeKey(track.id, track.levels[0].id, track.speedTiers[0]);
-  if (progress[firstKey] === undefined) {
-    for (const level of track.levels)
-      for (const tier of track.speedTiers)
-        progress[makeKey(track.id, level.id, tier)] = 'locked';
-    progress[firstKey] = 'available';
-    save('progress', progress);
+  let changed = false;
+
+  // Backfill cells for levels/tiers added after the track was first run
+  for (const level of track.levels)
+    for (const tier of track.speedTiers) {
+      const key = makeKey(track.id, level.id, tier);
+      if (progress[key] === undefined) {
+        progress[key] = 'locked';
+        changed = true;
+      }
+    }
+
+  // Fresh track: open the first cell
+  const anyActive = track.levels.some(l => track.speedTiers.some(t => {
+    const s = progress[makeKey(track.id, l.id, t)];
+    return s === 'available' || s === 'completed';
+  }));
+  if (!anyActive) {
+    progress[makeKey(track.id, track.levels[0].id, track.speedTiers[0])] = 'available';
+    changed = true;
   }
+
+  // Repair pass: backfilled cells never saw completeCell's cascade, so
+  // unlock any locked cell whose unlock condition is already met.
+  for (const level of track.levels)
+    for (let ti = 1; ti < track.speedTiers.length; ti++) {
+      const slower = progress[makeKey(track.id, level.id, track.speedTiers[ti - 1])];
+      const key = makeKey(track.id, level.id, track.speedTiers[ti]);
+      if (slower === 'completed' && progress[key] === 'locked') {
+        progress[key] = 'available';
+        changed = true;
+      }
+    }
+  for (let li = 1; li < track.levels.length; li++)
+    for (const tier of track.speedTiers) {
+      const prev = progress[makeKey(track.id, track.levels[li - 1].id, tier)];
+      const key = makeKey(track.id, track.levels[li].id, tier);
+      if (prev === 'completed' && progress[key] === 'locked') {
+        progress[key] = 'available';
+        changed = true;
+      }
+    }
+
+  if (changed) save('progress', progress);
   return progress;
 }
 
@@ -92,12 +133,30 @@ export function toggleFocus(key) {
   return stats;
 }
 
+const DEFAULT_SETTINGS = { mode: 'together', itemsPerSession: 20, track: 'tot10' };
+
 export function getSettings() {
-  return load('settings') || { mode: 'together', itemsPerSession: 20, track: 'tot10' };
+  // Merge per-field so a foreign or outdated settings object can never
+  // produce undefined fields (which would silently break sessions).
+  const settings = { ...DEFAULT_SETTINGS, ...(load('settings') || {}) };
+  if (!Number.isFinite(settings.itemsPerSession)
+    || settings.itemsPerSession < 5 || settings.itemsPerSession > 50) {
+    settings.itemsPerSession = DEFAULT_SETTINGS.itemsPerSession;
+  }
+  return settings;
 }
 
 export function saveSettings(settings) {
   save('settings', settings);
+}
+
+export function getLastErrors() {
+  const v = load('lastErrors');
+  return new Set(Array.isArray(v) ? v : []);
+}
+
+export function saveLastErrors(keys) {
+  save('lastErrors', [...keys]);
 }
 
 const STATE_KEYS = ['progress', 'factStats', 'settings', 'lastErrors'];
@@ -119,6 +178,12 @@ export function importState(text) {
     return false;
   }
   if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
-  for (const k of STATE_KEYS) if (data[k] !== undefined) save(k, data[k]);
+  for (const k of STATE_KEYS) {
+    const v = data[k];
+    if (v === undefined) continue;
+    if (k === 'lastErrors' && !Array.isArray(v)) continue;
+    if (k !== 'lastErrors' && (typeof v !== 'object' || v === null || Array.isArray(v))) continue;
+    save(k, v);
+  }
   return true;
 }

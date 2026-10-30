@@ -14,6 +14,7 @@ const {
   makeKey, initProgress, completeCell, nextCell,
   getFactStats, updateFactStats, toggleFocus,
   getSettings, saveSettings, exportState, importState,
+  getLastErrors, saveLastErrors,
 } = await import('../state.js');
 
 const track = {
@@ -101,6 +102,69 @@ test('importState rejects garbage and leaves state untouched', () => {
 });
 
 test('corrupt localStorage falls back to defaults', () => {
-  store.settings = '{broken';
+  store['rekenen:settings'] = '{broken';
   assert.equal(getSettings().mode, 'together');
+});
+
+test('storage keys are namespaced so flitsen (same origin) is untouched', () => {
+  saveSettings({ mode: 'solo', itemsPerSession: 10, track: 'tafels' });
+  updateFactStats('8+5', { correct: true, time: 900 });
+  saveLastErrors(['8+5']);
+  initProgress(track);
+  for (const k of Object.keys(store)) assert.match(k, /^rekenen:/);
+});
+
+test('flitsen settings under the bare key are ignored — rekenen gets its own defaults', () => {
+  // flitsen's shape: no itemsPerSession, no track
+  store.settings = JSON.stringify({ mode: 'together', wordsPerSession: 20, groep: 'g3', font: 'default' });
+  const s = getSettings();
+  assert.equal(s.itemsPerSession, 20);
+  assert.equal(s.track, 'tot10');
+});
+
+test('getSettings merges defaults per-field over a partial stored object', () => {
+  store['rekenen:settings'] = JSON.stringify({ mode: 'solo' });
+  const s = getSettings();
+  assert.equal(s.mode, 'solo');
+  assert.equal(s.itemsPerSession, 20);
+  assert.equal(s.track, 'tot10');
+});
+
+test('getSettings sanitizes out-of-range itemsPerSession', () => {
+  store['rekenen:settings'] = JSON.stringify({ mode: 'together', itemsPerSession: 'veel', track: 'tot10' });
+  assert.equal(getSettings().itemsPerSession, 20);
+  store['rekenen:settings'] = JSON.stringify({ mode: 'together', itemsPerSession: 0, track: 'tot10' });
+  assert.equal(getSettings().itemsPerSession, 20);
+});
+
+test('getLastErrors tolerates corrupt or non-array values', () => {
+  store['rekenen:lastErrors'] = '{broken';
+  assert.equal(getLastErrors().size, 0);
+  store['rekenen:lastErrors'] = '42';
+  assert.equal(getLastErrors().size, 0);
+  saveLastErrors(['8+5', '7+_=10']);
+  assert.deepEqual([...getLastErrors()].sort(), ['7+_=10', '8+5']);
+});
+
+test('importState skips malformed sections but imports the rest', () => {
+  const blob = JSON.stringify({
+    progress: { 'tot10:1:8000': 'completed' },
+    lastErrors: 'not-an-array',
+    settings: ['not', 'an', 'object'],
+  });
+  assert.equal(importState(blob), true);
+  assert.equal(getLastErrors().size, 0);
+  assert.equal(getSettings().itemsPerSession, 20);
+  assert.equal(initProgress(track)['tot10:1:8000'], 'completed');
+});
+
+test('initProgress backfills levels added after first run and unlocks behind completed work', () => {
+  const twoLevels = { id: 'tot10', speedTiers: [8000, 5000], levels: [{ id: 1 }, { id: 2 }] };
+  initProgress(twoLevels);
+  completeCell(twoLevels, 1, 8000);
+  completeCell(twoLevels, 2, 8000);
+  const threeLevels = { ...twoLevels, levels: [{ id: 1 }, { id: 2 }, { id: 3 }] };
+  const p = initProgress(threeLevels);
+  assert.equal(p['tot10:3:8000'], 'available'); // predecessor completed at this tier
+  assert.equal(p['tot10:3:5000'], 'locked');    // predecessor not completed at this tier
 });

@@ -4,8 +4,9 @@ import {
   makeKey, initProgress, completeCell, nextCell,
   getFactStats, updateFactStats, toggleFocus,
   getSettings, saveSettings, exportState, importState,
+  getLastErrors, saveLastErrors,
 } from './state.js';
-import { selectKeys } from './session.js';
+import { selectKeys, shuffle } from './session.js';
 import { createFlow, submitAnswer, flowTimeout, feedbackDone } from './flow.js';
 import { createKeypad } from './keypad.js';
 import { renderVisual } from './visuals.js';
@@ -61,7 +62,10 @@ function renderMatrix() {
     grid.appendChild(row);
   }
 
-  document.getElementById('btn-vandaag').disabled = !nextCell(track);
+  const next = nextCell(track);
+  const vandaag = document.getElementById('btn-vandaag');
+  vandaag.disabled = !next;
+  vandaag.textContent = next ? 'Vandaag' : 'Alles af!';
 }
 
 function openCellModal(levelId, tier) {
@@ -123,11 +127,11 @@ function startSession(levelId, tier, type) {
   const track = resolveTrack();
   const levelData = track.levels.find(l => l.id === levelId);
   const settings = getSettings();
-  const lastErrors = new Set(JSON.parse(localStorage.getItem('lastErrors') || '[]'));
+  const lastErrors = getLastErrors();
 
   const keys = type === 'practice'
     ? selectKeys(levelData.keys, tier, settings.itemsPerSession, lastErrors)
-    : [...levelData.keys].sort(() => Math.random() - 0.5);
+    : shuffle(levelData.keys);
 
   current = {
     track, level: levelId, tier, type,
@@ -287,7 +291,7 @@ function endSession() {
   clearTimer();
   const results = current.flow.results;
   const errors = results.filter(r => !r.correct).map(r => r.key);
-  localStorage.setItem('lastErrors', JSON.stringify(errors));
+  saveLastErrors(errors);
 
   current.passed = current.type === 'exam' && errors.length <= 1;
   if (current.passed) completeCell(current.track, current.level, current.tier);
@@ -329,13 +333,16 @@ function renderResults() {
     <div class="results-header"><h2>${header}</h2></div>
     <div class="results-list">${rows}</div>
     ${toetsPrompt}
-    <button class="btn" id="btn-back-home">Terug</button>
+    <button class="btn btn-secondary" id="btn-back-home">Terug</button>
   `;
 
   container.querySelectorAll('.btn-star').forEach(btn => {
     btn.addEventListener('click', () => {
-      toggleFocus(btn.dataset.key);
-      btn.classList.toggle('focused');
+      // The same fact can appear in several rows — sync every star for it
+      const stats = toggleFocus(btn.dataset.key);
+      container.querySelectorAll('.btn-star').forEach(b => {
+        if (b.dataset.key === btn.dataset.key) b.classList.toggle('focused', stats.focused);
+      });
     });
   });
 
@@ -383,8 +390,8 @@ function renderSettings() {
         </div>
       </div>
       <textarea class="export-area" id="export-area"></textarea>
-      <button class="btn" id="btn-export">Exporteren</button>
-      <button class="btn" id="btn-import">Importeren</button>
+      <button class="btn btn-secondary" id="btn-export">Exporteren</button>
+      <button class="btn btn-secondary" id="btn-import">Importeren</button>
       <div id="import-status"></div>
     </div>
     <button class="btn btn-primary" id="btn-settings-back" style="margin:16px;">Terug</button>
@@ -419,7 +426,15 @@ function renderSettings() {
   });
 
   document.getElementById('btn-import').addEventListener('click', () => {
-    const ok = importState(document.getElementById('export-area').value);
+    const text = document.getElementById('export-area').value;
+    const ok = importState(text);
+    if (ok) {
+      // Re-sync UI that was rendered from pre-import state
+      document.getElementById('track-select').value = resolveTrack().id;
+      renderMatrix();
+      renderSettings();
+      document.getElementById('export-area').value = text;
+    }
     document.getElementById('import-status').textContent = ok
       ? 'Gelukt! Voortgang geladen.'
       : 'Dat lukte niet — controleer de tekst.';

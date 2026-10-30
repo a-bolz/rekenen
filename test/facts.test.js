@@ -49,13 +49,15 @@ test('sampleEvenly returns list unchanged when small enough', () => {
   assert.deepEqual(sampleEvenly(keys, 25), keys);
 });
 
-test('sampleEvenly picks max spread items, keeps ends, is deterministic', () => {
+test('sampleEvenly picks max unique items from the input, in input order, deterministically', () => {
   const keys = Array.from({ length: 100 }, (_, i) => `k${i}`);
   const out = sampleEvenly(keys, 25);
   assert.equal(out.length, 25);
-  assert.equal(out[0], 'k0');
-  assert.equal(out[24], 'k99');
   assert.equal(new Set(out).size, 25);
+  const positions = out.map(k => keys.indexOf(k));
+  for (const p of positions) assert.ok(p >= 0, 'picked key not from input');
+  assert.deepEqual(positions, [...positions].sort((a, b) => a - b),
+    'picked keys must keep original list order');
   assert.deepEqual(sampleEvenly(keys, 25), out);
 });
 
@@ -118,6 +120,148 @@ test('min met brug really borrows', () => {
   for (const key of brug.keys) {
     const f = parseKey(key);
     assert.ok(f.op === '-' && f.b > f.a % 10 && f.answer >= 1, key);
+  }
+});
+
+// --- Distribution regression tests (guard against stride aliasing) ---
+
+function levelKeys(trackId, levelId) {
+  return TRACKS.find(t => t.id === trackId).levels.find(l => l.id === levelId).keys;
+}
+
+test('tot100 L3 (plus/min heel tiental) spans many tens, both directions', () => {
+  const plusTens = new Set(), minTens = new Set();
+  for (const key of levelKeys('tot100', 3)) {
+    const f = parseKey(key);
+    if (f.op === '+') plusTens.add(f.b); else minTens.add(f.b);
+  }
+  assert.ok(plusTens.size >= 4, `plus tens addends ${[...plusTens]} span < 4`);
+  assert.ok(minTens.size >= 3, `minus tens subtrahends ${[...minTens]} span < 3`);
+});
+
+test('tot100 L4 (zonder brug) spans many unit addends and subtrahends', () => {
+  const plusUnits = new Set(), minUnits = new Set();
+  for (const key of levelKeys('tot100', 4)) {
+    const f = parseKey(key);
+    if (f.op === '+') plusUnits.add(f.b); else minUnits.add(f.b);
+  }
+  assert.ok(plusUnits.size >= 5, `plus unit addends ${[...plusUnits]} span < 5`);
+  assert.ok([5, 6, 7, 8].some(u => plusUnits.has(u)),
+    `plus unit addends ${[...plusUnits]} missing all of +5/+6/+7/+8`);
+  assert.ok(minUnits.size >= 5, `minus unit subtrahends ${[...minUnits]} span < 5`);
+});
+
+// Regenerate the mix source families exactly as facts.js builds them
+// (same generator logic, same exported sampleEvenly).
+const TENS = Array.from({ length: 9 }, (_, i) => (i + 1) * 10);
+
+function plusMinTot5() {
+  const keys = [];
+  for (let s = 2; s <= 5; s++)
+    for (let a = 1; a < s; a++) keys.push(`${a}+${s - a}`);
+  for (let a = 2; a <= 5; a++)
+    for (let b = 1; b < a; b++) keys.push(`${a}-${b}`);
+  return keys;
+}
+
+function plusSums(sMin, sMax) {
+  const keys = [];
+  for (let s = sMin; s <= sMax; s++)
+    for (let a = 1; a < s; a++) keys.push(`${a}+${s - a}`);
+  return sampleEvenly(keys);
+}
+
+function minRange(aMin, aMax) {
+  const keys = [];
+  for (let a = aMin; a <= aMax; a++)
+    for (let b = 1; b < a; b++) keys.push(`${a}-${b}`);
+  return sampleEvenly(keys);
+}
+
+function brugPlus() {
+  const keys = [];
+  for (let a = 2; a <= 9; a++)
+    for (let b = 2; b <= 9; b++) if (a + b >= 11) keys.push(`${a}+${b}`);
+  return sampleEvenly(keys);
+}
+
+function brugMin() {
+  const keys = [];
+  for (let a = 11; a <= 18; a++)
+    for (let b = 2; b <= 9; b++) {
+      const r = a - b;
+      if (r >= 2 && r <= 9) keys.push(`${a}-${b}`);
+    }
+  return sampleEvenly(keys);
+}
+
+function plusMinTiental() {
+  const keys = [];
+  for (let a = 11; a <= 89; a++) {
+    if (a % 10 === 0) continue;
+    for (const t of TENS) {
+      if (a + t <= 99) keys.push(`${a}+${t}`);
+      if (a - t >= 11) keys.push(`${a}-${t}`);
+    }
+  }
+  return sampleEvenly(keys);
+}
+
+function eenhedenZonderBrug() {
+  const keys = [];
+  for (let a = 21; a <= 98; a++) {
+    const u = a % 10;
+    if (u === 0) continue;
+    for (let e = 1; e <= 9; e++) {
+      if (u + e <= 9) keys.push(`${a}+${e}`);
+      if (e < u) keys.push(`${a}-${e}`);
+    }
+  }
+  return sampleEvenly(keys);
+}
+
+function plusMetBrug() {
+  const keys = [];
+  for (let a = 15; a <= 95; a++) {
+    const u = a % 10;
+    if (u === 0) continue;
+    for (let e = 2; e <= 9; e++)
+      if (u + e > 9 && a + e <= 100) keys.push(`${a}+${e}`);
+  }
+  return sampleEvenly(keys);
+}
+
+function minMetBrug() {
+  const keys = [];
+  for (let a = 21; a <= 95; a++) {
+    const u = a % 10;
+    for (let e = 2; e <= 9; e++)
+      if (e > u && a - e >= 1) keys.push(`${a}-${e}`);
+  }
+  return sampleEvenly(keys);
+}
+
+function tafel(n) {
+  return Array.from({ length: 10 }, (_, i) => `${i + 1}x${n}`);
+}
+
+test('every mix level draws near-evenly from each source family', () => {
+  const mixes = [
+    { track: 'tot10', level: 7, families: [plusMinTot5(), plusSums(6, 10), minRange(6, 10)] },
+    { track: 'tot20', level: 8, families: [brugPlus(), brugMin(), plusSums(11, 20), minRange(11, 20)] },
+    { track: 'tot100', level: 7, families: [plusMinTiental(), eenhedenZonderBrug(), plusMetBrug(), minMetBrug()] },
+    { track: 'tafels', level: 4, families: [tafel(2), tafel(5), tafel(10)] },
+    { track: 'tafels', level: 8, families: [tafel(2), tafel(3), tafel(4), tafel(5), tafel(6), tafel(10)] },
+  ];
+  for (const { track, level, families } of mixes) {
+    const keys = levelKeys(track, level);
+    const minPer = Math.floor(25 / families.length) - 1;
+    families.forEach((family, i) => {
+      const set = new Set(family);
+      const n = keys.filter(k => set.has(k)).length;
+      assert.ok(n >= minPer,
+        `${track} mix: family ${i} contributes ${n} items, need >= ${minPer}`);
+    });
   }
 });
 
