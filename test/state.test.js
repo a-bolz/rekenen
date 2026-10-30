@@ -78,7 +78,10 @@ test('toggleFocus flips the flag', () => {
 });
 
 test('settings defaults and roundtrip', () => {
-  assert.deepEqual(getSettings(), { mode: 'together', itemsPerSession: 20, track: 'tot10' });
+  assert.deepEqual(getSettings(), {
+    mode: 'together', itemsPerSession: 20, track: 'tot10',
+    correctAnimMs: 700, wrongAnimMs: 1500,
+  });
   saveSettings({ mode: 'solo', itemsPerSession: 10, track: 'tafels' });
   assert.equal(getSettings().mode, 'solo');
 });
@@ -167,4 +170,15 @@ test('initProgress backfills levels added after first run and unlocks behind com
   const p = initProgress(threeLevels);
   assert.equal(p['tot10:3:8000'], 'available'); // predecessor completed at this tier
   assert.equal(p['tot10:3:5000'], 'locked');    // predecessor not completed at this tier
+});
+
+test('animation durations default and are sanitized', () => {
+  assert.equal(getSettings().correctAnimMs, 700);
+  assert.equal(getSettings().wrongAnimMs, 1500);
+  store['rekenen:settings'] = JSON.stringify({ correctAnimMs: 'snel', wrongAnimMs: 100 });
+  assert.equal(getSettings().correctAnimMs, 700);  // non-numeric -> default
+  assert.equal(getSettings().wrongAnimMs, 1500);   // below floor -> default
+  store['rekenen:settings'] = JSON.stringify({ correctAnimMs: 0, wrongAnimMs: 3000 });
+  assert.equal(getSettings().correctAnimMs, 0);    // 0 = animation off, valid
+  assert.equal(getSettings().wrongAnimMs, 3000);
 });

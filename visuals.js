@@ -7,7 +7,7 @@ function svgOpen(w, h) {
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`;
 }
 
-function tenFrameSVG(dots) {
+function tenFrameSVG(dots, scale) {
   const cell = 34, pad = 2;
   const w = 5 * cell + pad * 2, h = 2 * cell + pad * 2;
   let out = svgOpen(w, h);
@@ -18,7 +18,7 @@ function tenFrameSVG(dots) {
   dots.forEach((d, i) => {
     const x = pad + (i % 5) * cell + cell / 2, y = pad + Math.floor(i / 5) * cell + cell / 2;
     const fill = COLORS[d];
-    out += `<circle class="dot" style="animation-delay:${i * 40}ms" cx="${x}" cy="${y}" r="${cell * 0.36}" fill="${fill}"/>`;
+    out += `<circle class="dot" style="animation-delay:${Math.round(i * 40 * scale)}ms" cx="${x}" cy="${y}" r="${cell * 0.36}" fill="${fill}"/>`;
     if (d === 'cross') {
       out += `<line x1="${x - 10}" y1="${y - 10}" x2="${x + 10}" y2="${y + 10}" stroke="${COLORS.mark}" stroke-width="3"/>`;
     }
@@ -26,7 +26,7 @@ function tenFrameSVG(dots) {
   return out + '</svg>';
 }
 
-function renderTenFrame(f) {
+function renderTenFrame(f, scale) {
   let dots;
   if (f.op === '-') {
     dots = [...Array(f.a - f.b).fill('p1'), ...Array(f.b).fill('cross')];
@@ -37,13 +37,13 @@ function renderTenFrame(f) {
   }
   const frames = [];
   for (let i = 0; i < dots.length; i += 10) frames.push(dots.slice(i, i + 10));
-  return `<div class="visual">${frames.map(tenFrameSVG).join('')}</div>`;
+  return `<div class="visual">${frames.map(d => tenFrameSVG(d, scale)).join('')}</div>`;
 }
 
-function renderHundredGrid(f) {
+function renderHundredGrid(f, scale) {
   const cell = 13, pad = 2;
   const w = 10 * cell + pad * 2, h = 10 * cell + pad * 2;
-  const linearDelay = i => Math.min(i * 8, 400);
+  const linearDelay = i => Math.round(Math.min(i * 8, 400) * scale);
   const cells = Array(100).fill(null); // { fill, delay } per filled cell
   const ta = Math.floor(f.a / 10), ua = f.a % 10;
   const wholeTens = f.b > 0 && f.b % 10 === 0;
@@ -56,13 +56,13 @@ function renderHundredGrid(f) {
     // b as whole green rows sliding in one after another
     for (let r = 0; r < tb; r++)
       for (let c = 0; c < 10; c++)
-        cells[(greenStart + r) * 10 + c] = { fill: COLORS.p2, delay: 400 + r * 150 };
+        cells[(greenStart + r) * 10 + c] = { fill: COLORS.p2, delay: Math.round((400 + r * 150) * scale) };
   } else if (f.op === '-' && wholeTens && tb <= ta) {
     // a as blue, then the LAST tb full tens-rows of a greyed out row by row
     for (let i = 0; i < (ta - tb) * 10; i++) cells[i] = { fill: COLORS.p1, delay: linearDelay(i) };
     for (let r = 0; r < tb; r++)
       for (let c = 0; c < 10; c++)
-        cells[(ta - tb + r) * 10 + c] = { fill: COLORS.cross, delay: 450 + r * 150 };
+        cells[(ta - tb + r) * 10 + c] = { fill: COLORS.cross, delay: Math.round((450 + r * 150) * scale) };
     for (let i = ta * 10; i < f.a; i++) cells[i] = { fill: COLORS.p1, delay: linearDelay(i) };
   } else {
     // all other operand shapes: existing linear fill
@@ -85,21 +85,22 @@ function renderHundredGrid(f) {
   return `<div class="visual">${out}</svg></div>`;
 }
 
-function renderArray(f) {
+function renderArray(f, scale) {
   const cell = 26, pad = 4;
   const w = f.b * cell + pad * 2, h = f.a * cell + pad * 2;
   let out = svgOpen(w, h);
   for (let r = 0; r < f.a; r++)
     for (let c = 0; c < f.b; c++) {
       const x = pad + c * cell + cell / 2, y = pad + r * cell + cell / 2;
-      out += `<circle class="dot" style="animation-delay:${r * 90}ms" cx="${x}" cy="${y}" r="${cell * 0.32}" fill="${COLORS.p1}"/>`;
+      out += `<circle class="dot" style="animation-delay:${Math.round(r * 90 * scale)}ms" cx="${x}" cy="${y}" r="${cell * 0.32}" fill="${COLORS.p1}"/>`;
     }
   return `<div class="visual">${out}</svg></div>`;
 }
 
-export function renderVisual(key, visualType) {
+// scale stretches/compresses the reveal stagger; 1 = the authored timing
+export function renderVisual(key, visualType, scale = 1) {
   const f = parseKey(key);
-  if (visualType === 'array') return renderArray(f);
-  if (visualType === 'hundredgrid') return renderHundredGrid(f);
-  return renderTenFrame(f);
+  if (visualType === 'array') return renderArray(f, scale);
+  if (visualType === 'hundredgrid') return renderHundredGrid(f, scale);
+  return renderTenFrame(f, scale);
 }

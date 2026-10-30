@@ -89,3 +89,12 @@ test('array shows a rows of b dots', () => {
   const html = renderVisual('3x4', 'array');
   assert.equal(countDots(html), 12);
 });
+
+test('scale stretches and compresses the reveal stagger', () => {
+  const delays = html => [...html.matchAll(/animation-delay:(\d+)ms/g)].map(m => +m[1]);
+  const base = delays(renderVisual('8+5', 'tenframe'));
+  const half = delays(renderVisual('8+5', 'tenframe', 0.5));
+  const dbl = delays(renderVisual('8+5', 'tenframe', 2));
+  assert.deepEqual(half, base.map(d => Math.round(d / 2)));
+  assert.deepEqual(dbl, base.map(d => d * 2));
+});

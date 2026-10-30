@@ -1,6 +1,6 @@
 // flow.js
-export function createFlow({ keys, visualOnCorrect }) {
-  return { keys, visualOnCorrect, index: 0, phase: 'question', results: [] };
+export function createFlow({ keys, visualOnCorrect, correctMs = 700, wrongMs = 1500 }) {
+  return { keys, visualOnCorrect, correctMs, wrongMs, index: 0, phase: 'question', results: [] };
 }
 
 function advance(flow) {
@@ -18,11 +18,11 @@ export function submitAnswer(flow, correct, time) {
   flow.results.push({ key: flow.keys[flow.index], correct, time });
   if (!correct) {
     flow.phase = 'feedback';
-    return { feedback: 'wrong', durationMs: 1500, done: false };
+    return { feedback: 'wrong', durationMs: flow.wrongMs, done: false };
   }
   if (flow.visualOnCorrect) {
     flow.phase = 'feedback';
-    return { feedback: 'correct', durationMs: 700, done: false };
+    return { feedback: 'correct', durationMs: flow.correctMs, done: false };
   }
   return advance(flow);
 }

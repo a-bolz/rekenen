@@ -133,16 +133,22 @@ export function toggleFocus(key) {
   return stats;
 }
 
-const DEFAULT_SETTINGS = { mode: 'together', itemsPerSession: 20, track: 'tot10' };
+const DEFAULT_SETTINGS = {
+  mode: 'together', itemsPerSession: 20, track: 'tot10',
+  correctAnimMs: 700, wrongAnimMs: 1500,
+};
+
+function clampNumber(value, min, max, fallback) {
+  return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+}
 
 export function getSettings() {
   // Merge per-field so a foreign or outdated settings object can never
   // produce undefined fields (which would silently break sessions).
   const settings = { ...DEFAULT_SETTINGS, ...(load('settings') || {}) };
-  if (!Number.isFinite(settings.itemsPerSession)
-    || settings.itemsPerSession < 5 || settings.itemsPerSession > 50) {
-    settings.itemsPerSession = DEFAULT_SETTINGS.itemsPerSession;
-  }
+  settings.itemsPerSession = clampNumber(settings.itemsPerSession, 5, 50, DEFAULT_SETTINGS.itemsPerSession);
+  settings.correctAnimMs = clampNumber(settings.correctAnimMs, 0, 3000, DEFAULT_SETTINGS.correctAnimMs);
+  settings.wrongAnimMs = clampNumber(settings.wrongAnimMs, 500, 5000, DEFAULT_SETTINGS.wrongAnimMs);
   return settings;
 }
 

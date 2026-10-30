@@ -63,3 +63,10 @@ test('timeout records incorrect with null time', () => {
   assert.equal(r.feedback, 'wrong');
   assert.deepEqual(flow.results, [{ key: '1+1', correct: false, time: null }]);
 });
+
+test('custom feedback durations flow through to events', () => {
+  const flow = createFlow({ keys: ['1+1', '2+2'], visualOnCorrect: true, correctMs: 300, wrongMs: 2500 });
+  assert.deepEqual(submitAnswer(flow, true, 900), { feedback: 'correct', durationMs: 300, done: false });
+  feedbackDone(flow);
+  assert.deepEqual(submitAnswer(flow, false, 900), { feedback: 'wrong', durationMs: 2500, done: false });
+});

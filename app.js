@@ -136,7 +136,12 @@ function startSession(levelId, tier, type) {
   current = {
     track, level: levelId, tier, type,
     mode: settings.mode,
-    flow: createFlow({ keys, visualOnCorrect: track.speedTiers.indexOf(tier) === 0 }),
+    flow: createFlow({
+      keys,
+      visualOnCorrect: track.speedTiers.indexOf(tier) === 0 && settings.correctAnimMs > 0,
+      correctMs: settings.correctAnimMs,
+      wrongMs: settings.wrongAnimMs,
+    }),
     timerId: null,
     startTime: 0,
     keypad: null,
@@ -270,9 +275,11 @@ function showFeedback(key, kind, durationMs) {
     ? f.display.replace('□', String(f.answer))
     : `${f.display} = ${f.answer}`;
   const fb = document.getElementById('feedback');
+  // Stretch/compress the dot reveal with the chosen duration (1 = authored timing)
+  const scale = durationMs / (kind === 'correct' ? 700 : 1500);
   fb.innerHTML = `
     <div class="feedback-answer ${kind}">${answerText}</div>
-    ${renderVisual(key, current.track.visual)}
+    ${renderVisual(key, current.track.visual, scale)}
   `;
   fb.classList.remove('hidden');
   setTimeout(() => {
@@ -385,6 +392,28 @@ function renderSettings() {
       </div>
       <div class="settings-item">
         <div>
+          <div class="settings-item-label">Animatie bij goed (ms)</div>
+          <div class="settings-item-desc">Op het langzaamste tempo · 0 = uit</div>
+        </div>
+        <div class="stepper">
+          <button class="stepper-btn" id="anim-goed-down">−</button>
+          <span class="stepper-value" id="anim-goed-value">${settings.correctAnimMs}</span>
+          <button class="stepper-btn" id="anim-goed-up">+</button>
+        </div>
+      </div>
+      <div class="settings-item">
+        <div>
+          <div class="settings-item-label">Animatie bij fout (ms)</div>
+          <div class="settings-item-desc">Tijd om het goede antwoord te zien</div>
+        </div>
+        <div class="stepper">
+          <button class="stepper-btn" id="anim-fout-down">−</button>
+          <span class="stepper-value" id="anim-fout-value">${settings.wrongAnimMs}</span>
+          <button class="stepper-btn" id="anim-fout-up">+</button>
+        </div>
+      </div>
+      <div class="settings-item">
+        <div>
           <div class="settings-item-label">Voortgang overzetten</div>
           <div class="settings-item-desc">Kopieer deze tekst naar een ander apparaat</div>
         </div>
@@ -405,21 +434,23 @@ function renderSettings() {
       : 'Samen — ouder geeft goed/fout aan';
   });
 
-  document.getElementById('stepper-down').addEventListener('click', () => {
-    const s = getSettings();
-    if (s.itemsPerSession > 5) {
-      saveSettings({ ...s, itemsPerSession: s.itemsPerSession - 5 });
-      document.getElementById('stepper-value').textContent = s.itemsPerSession - 5;
-    }
-  });
+  function bindStepper(prefix, field, { min, max, step }) {
+    const valueEl = document.getElementById(`${prefix}-value`);
+    const change = delta => () => {
+      const s = getSettings();
+      const next = Math.min(max, Math.max(min, s[field] + delta));
+      if (next !== s[field]) {
+        saveSettings({ ...s, [field]: next });
+        valueEl.textContent = next;
+      }
+    };
+    document.getElementById(`${prefix}-down`).addEventListener('click', change(-step));
+    document.getElementById(`${prefix}-up`).addEventListener('click', change(step));
+  }
 
-  document.getElementById('stepper-up').addEventListener('click', () => {
-    const s = getSettings();
-    if (s.itemsPerSession < 50) {
-      saveSettings({ ...s, itemsPerSession: s.itemsPerSession + 5 });
-      document.getElementById('stepper-value').textContent = s.itemsPerSession + 5;
-    }
-  });
+  bindStepper('stepper', 'itemsPerSession', { min: 5, max: 50, step: 5 });
+  bindStepper('anim-goed', 'correctAnimMs', { min: 0, max: 3000, step: 100 });
+  bindStepper('anim-fout', 'wrongAnimMs', { min: 500, max: 5000, step: 100 });
 
   document.getElementById('btn-export').addEventListener('click', () => {
     document.getElementById('export-area').value = exportState();
