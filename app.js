@@ -10,6 +10,7 @@ import { selectKeys, shuffle, isFout } from './session.js';
 import { createFlow, submitAnswer, feedbackDone } from './flow.js';
 import { createKeypad } from './keypad.js';
 import { renderVisual } from './visuals.js';
+import { createManipulative, canManipulate } from './blocks.js';
 
 // --- Screen routing ---
 
@@ -221,6 +222,7 @@ function showItem() {
   if (current.blokjes !== 'alleen') fitText(display);
 
   const qv = document.getElementById('question-visual');
+  qv.classList.remove('manipulative');
   qv.classList.toggle('solo-visual', current.blokjes === 'alleen');
   if (current.blokjes !== 'uit') {
     qv.innerHTML = renderVisual(key, current.track.visual, 1, true);
@@ -258,8 +260,20 @@ function startTimer() {
       // The real elapsed time is recorded on answer; isFout() scores it.
       clearTimer();
       bar.classList.add('expired');
+      if (current.type === 'practice') showManipulative();
     }
   }, 50);
+}
+
+// Practice scaffold on timeout: draggable blocks (sums within 20)
+function showManipulative() {
+  const f = parseKey(currentKey());
+  if (!canManipulate(f)) return;
+  const qv = document.getElementById('question-visual');
+  qv.classList.remove('hidden', 'solo-visual');
+  qv.classList.add('manipulative');
+  qv.innerHTML = '';
+  qv.appendChild(createManipulative(f, showManipulative));
 }
 
 function clearTimer() {
