@@ -17,6 +17,10 @@ function tenFrameSVG(dots, scale) {
   }
   dots.forEach((d, i) => {
     const x = pad + (i % 5) * cell + cell / 2, y = pad + Math.floor(i / 5) * cell + cell / 2;
+    if (d === 'empty') {
+      out += `<circle class="dot dot-empty" style="animation-delay:${Math.round(i * 40 * scale)}ms" cx="${x}" cy="${y}" r="${cell * 0.36}" fill="none" stroke="#bbb" stroke-width="2" stroke-dasharray="4 3"/>`;
+      return;
+    }
     const fill = COLORS[d];
     out += `<circle class="dot" style="animation-delay:${Math.round(i * 40 * scale)}ms" cx="${x}" cy="${y}" r="${cell * 0.36}" fill="${fill}"/>`;
     if (d === 'cross') {
@@ -26,12 +30,13 @@ function tenFrameSVG(dots, scale) {
   return out + '</svg>';
 }
 
-function renderTenFrame(f, scale) {
+function renderTenFrame(f, scale, question) {
   let dots;
   if (f.op === '-') {
     dots = [...Array(f.a - f.b).fill('p1'), ...Array(f.b).fill('cross')];
   } else if (f.op === 'bond') {
-    dots = [...Array(f.a).fill('p1'), ...Array(f.answer).fill('p2')];
+    // Question mode must not paint the missing part — show it as empty cells.
+    dots = [...Array(f.a).fill('p1'), ...Array(f.answer).fill(question ? 'empty' : 'p2')];
   } else {
     dots = [...Array(f.a).fill('p1'), ...Array(f.b).fill('p2')];
   }
@@ -97,10 +102,11 @@ function renderArray(f, scale) {
   return `<div class="visual">${out}</svg></div>`;
 }
 
-// scale stretches/compresses the reveal stagger; 1 = the authored timing
-export function renderVisual(key, visualType, scale = 1) {
+// scale stretches/compresses the reveal stagger; 1 = the authored timing.
+// question=true renders the item as a prompt (bond gap stays empty).
+export function renderVisual(key, visualType, scale = 1, question = false) {
   const f = parseKey(key);
   if (visualType === 'array') return renderArray(f, scale);
   if (visualType === 'hundredgrid') return renderHundredGrid(f, scale);
-  return renderTenFrame(f, scale);
+  return renderTenFrame(f, scale, question);
 }

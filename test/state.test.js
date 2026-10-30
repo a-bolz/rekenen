@@ -80,7 +80,7 @@ test('toggleFocus flips the flag', () => {
 test('settings defaults and roundtrip', () => {
   assert.deepEqual(getSettings(), {
     mode: 'together', itemsPerSession: 20, track: 'tot10',
-    correctAnimMs: 700, wrongAnimMs: 1500,
+    correctAnimMs: 700, wrongAnimMs: 1500, blokjes: 'erbij',
   });
   saveSettings({ mode: 'solo', itemsPerSession: 10, track: 'tafels' });
   assert.equal(getSettings().mode, 'solo');
@@ -181,4 +181,23 @@ test('animation durations default and are sanitized', () => {
   store['rekenen:settings'] = JSON.stringify({ correctAnimMs: 0, wrongAnimMs: 3000 });
   assert.equal(getSettings().correctAnimMs, 0);    // 0 = animation off, valid
   assert.equal(getSettings().wrongAnimMs, 3000);
+});
+
+test('blokjes setting defaults and sanitizes', () => {
+  assert.equal(getSettings().blokjes, 'erbij');
+  store['rekenen:settings'] = JSON.stringify({ blokjes: 'misschien' });
+  assert.equal(getSettings().blokjes, 'erbij');
+  store['rekenen:settings'] = JSON.stringify({ blokjes: 'alleen' });
+  assert.equal(getSettings().blokjes, 'alleen');
+});
+
+test('amendFactStat flips a wrong record to correct and back', async () => {
+  const { amendFactStat } = await import('../state.js');
+  updateFactStats('8+5', { correct: false, time: 4000 });
+  let s = amendFactStat('8+5', true, 4000);
+  assert.equal(s.correct, 1);
+  assert.equal(s.totalTime, 4000);
+  s = amendFactStat('8+5', false, 4000);
+  assert.equal(s.correct, 0);
+  assert.equal(s.totalTime, 0);
 });

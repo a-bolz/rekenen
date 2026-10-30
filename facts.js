@@ -41,11 +41,11 @@ export function parseKey(key) {
   let m;
   if ((m = key.match(/^(\d+)\+_=(\d+)$/))) {
     const a = +m[1], c = +m[2];
-    return { op: 'bond', a, c, answer: c - a, display: `${a} + □ = ${c}` };
+    return { op: 'bond', a, c, answer: c - a, display: `${a} + x = ${c}` };
   }
   if ((m = key.match(/^(\d+)=(\d+)\+_$/))) {
     const c = +m[1], a = +m[2];
-    return { op: 'bond', a, c, answer: c - a, display: `${c} = ${a} + □` };
+    return { op: 'bond', a, c, answer: c - a, display: `${c} = ${a} + x` };
   }
   if ((m = key.match(/^(\d+)\+(\d+)$/))) {
     const a = +m[1], b = +m[2];
@@ -72,7 +72,7 @@ function splitsen(nMin, nMax, aMin) {
 }
 
 function splitsenVan10() {
-  return [...range(0, 10).map(a => `${a}+_=10`), ...range(1, 9).map(a => `10=${a}+_`)];
+  return [...range(1, 9).map(a => `${a}+_=10`), ...range(1, 9).map(a => `10=${a}+_`)];
 }
 
 function plusMinTot5() {
@@ -210,7 +210,7 @@ export const TRACKS = [
   {
     id: 'tot10', name: 'Tot 10', speedTiers: [8000, 5000, 3000, 2000], visual: 'tenframe',
     levels: [
-      { id: 1, name: 'Splitsen tot 5', keys: splitsen(2, 5, 0) },
+      { id: 1, name: 'Splitsen tot 5', keys: splitsen(2, 5, 1) },
       { id: 2, name: 'Plus en min tot 5', keys: plusMinTot5() },
       { id: 3, name: 'Splitsen van 10', keys: splitsenVan10() },
       { id: 4, name: 'Splitsen van 6 t/m 9', keys: splitsen(6, 9, 1) },
@@ -255,6 +255,16 @@ export const TRACKS = [
       { id: 6, name: 'Tafel van 3', keys: tafel(3) },
       { id: 7, name: 'Tafel van 6', keys: tafel(6) },
       { id: 8, name: 'Mix t/m 6', keys: mix([tafel(2), tafel(3), tafel(4), tafel(5), tafel(6), tafel(10)]) },
+    ],
+  },
+  {
+    // Full-table drill: practice draws weighted from the ENTIRE table so any
+    // combo can appear, with wrong/slow answers resurfacing (bandit-style via
+    // selectKeys). Exams sample 25 (handled in app.js).
+    id: 'drill', name: 'Drill', speedTiers: [8000, 5000, 3000, 2000], visual: 'tenframe',
+    levels: [
+      { id: 1, name: 'Plustafel', keys: range(0, 9).flatMap(a => range(0, 9).map(b => `${a}+${b}`)) },
+      { id: 2, name: 'Mintafel', keys: range(0, 9).flatMap(a => range(0, a).map(b => `${a}-${b}`)) },
     ],
   },
 ];

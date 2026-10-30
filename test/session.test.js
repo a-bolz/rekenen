@@ -60,3 +60,12 @@ test('heavily weighted key dominates selection', () => {
   }
   assert.ok(count22 > 150, `expected 2+2 to dominate, got ${count22}/300`);
 });
+
+test('isFout: wrong, slow-correct and overrides', async () => {
+  const { isFout } = await import('../session.js');
+  assert.equal(isFout({ correct: false, time: 1200 }, 5000), true);
+  assert.equal(isFout({ correct: true, time: 1200 }, 5000), false);
+  assert.equal(isFout({ correct: true, time: 6200 }, 5000), true);  // te langzaam
+  assert.equal(isFout({ correct: true, time: null }, 5000), false);
+  assert.equal(isFout({ correct: false, time: 9000, override: true }, 5000), false);
+});

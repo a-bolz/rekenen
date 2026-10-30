@@ -124,6 +124,22 @@ export function updateFactStats(key, result) {
   return stats;
 }
 
+// Parent override on the results screen: flip a recorded fout to goed (or back).
+export function amendFactStat(key, makeCorrect, time) {
+  const all = load('factStats') || {};
+  const stats = all[key] || { ...EMPTY_STATS };
+  if (makeCorrect) {
+    stats.correct += 1;
+    if (time) stats.totalTime += time;
+  } else {
+    stats.correct = Math.max(0, stats.correct - 1);
+    if (time) stats.totalTime = Math.max(0, stats.totalTime - time);
+  }
+  all[key] = stats;
+  save('factStats', all);
+  return stats;
+}
+
 export function toggleFocus(key) {
   const all = load('factStats') || {};
   const stats = all[key] || { ...EMPTY_STATS };
@@ -136,6 +152,7 @@ export function toggleFocus(key) {
 const DEFAULT_SETTINGS = {
   mode: 'together', itemsPerSession: 20, track: 'tot10',
   correctAnimMs: 700, wrongAnimMs: 1500,
+  blokjes: 'erbij', // 'uit' | 'erbij' | 'alleen' — block representation during oefenen
 };
 
 function clampNumber(value, min, max, fallback) {
@@ -149,6 +166,7 @@ export function getSettings() {
   settings.itemsPerSession = clampNumber(settings.itemsPerSession, 5, 50, DEFAULT_SETTINGS.itemsPerSession);
   settings.correctAnimMs = clampNumber(settings.correctAnimMs, 0, 3000, DEFAULT_SETTINGS.correctAnimMs);
   settings.wrongAnimMs = clampNumber(settings.wrongAnimMs, 500, 5000, DEFAULT_SETTINGS.wrongAnimMs);
+  if (!['uit', 'erbij', 'alleen'].includes(settings.blokjes)) settings.blokjes = DEFAULT_SETTINGS.blokjes;
   return settings;
 }
 

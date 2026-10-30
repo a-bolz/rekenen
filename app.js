@@ -2,12 +2,12 @@
 import { TRACKS, parseKey } from './facts.js';
 import {
   makeKey, initProgress, completeCell, nextCell,
-  getFactStats, updateFactStats, toggleFocus,
+  getFactStats, updateFactStats, toggleFocus, amendFactStat,
   getSettings, saveSettings, exportState, importState,
   getLastErrors, saveLastErrors,
 } from './state.js';
-import { selectKeys, shuffle } from './session.js';
-import { createFlow, submitAnswer, flowTimeout, feedbackDone } from './flow.js';
+import { selectKeys, shuffle, isFout } from './session.js';
+import { createFlow, submitAnswer, feedbackDone } from './flow.js';
 import { createKeypad } from './keypad.js';
 import { renderVisual } from './visuals.js';
 
@@ -123,19 +123,30 @@ function fitText(el) {
 
 // --- Session ---
 
-function startSession(levelId, tier, type) {
+function startSession(levelId, tier, type, poolOverride) {
   const track = resolveTrack();
   const levelData = track.levels.find(l => l.id === levelId);
   const settings = getSettings();
   const lastErrors = getLastErrors();
 
-  const keys = type === 'practice'
-    ? selectKeys(levelData.keys, tier, settings.itemsPerSession, lastErrors)
-    : shuffle(levelData.keys);
+  let keys;
+  if (type === 'practice') {
+    const pool = poolOverride && poolOverride.length ? poolOverride : levelData.keys;
+    const poolErrors = poolOverride ? new Set(poolOverride) : lastErrors;
+    const count = poolOverride
+      ? Math.min(settings.itemsPerSession, Math.max(6, pool.length * 4))
+      : settings.itemsPerSession;
+    keys = selectKeys(pool, tier, count, poolErrors);
+  } else {
+    // Drill levels span a full table — exams sample 25 of it.
+    keys = shuffle(levelData.keys);
+    if (track.id === 'drill') keys = keys.slice(0, 25);
+  }
 
   current = {
     track, level: levelId, tier, type,
     mode: settings.mode,
+    blokjes: type === 'practice' ? settings.blokjes : 'uit', // toets: digits only
     flow: createFlow({
       keys,
       visualOnCorrect: track.speedTiers.indexOf(tier) === 0 && settings.correctAnimMs > 0,
@@ -156,9 +167,10 @@ function renderSessionScreen() {
   const container = document.getElementById('screen-session');
   const solo = current.mode === 'solo';
   container.innerHTML = `
-    <div class="timer-bar"><div class="timer-fill" id="timer-fill"></div></div>
+    <div class="timer-bar" id="timer-bar"><div class="timer-fill" id="timer-fill"></div></div>
     <button class="btn-abort" id="btn-abort">×</button>
     <div class="word-display" id="fact-display"></div>
+    <div class="question-visual hidden" id="question-visual"></div>
     ${solo ? '<div id="keypad-mount"></div>' : `
     <div class="session-controls" id="session-controls">
       <button class="btn-control btn-wrong" id="btn-wrong">×</button>
@@ -205,7 +217,18 @@ function showItem() {
   const f = parseKey(key);
   const display = document.getElementById('fact-display');
   display.textContent = f.display;
-  fitText(display);
+  display.style.display = current.blokjes === 'alleen' ? 'none' : '';
+  if (current.blokjes !== 'alleen') fitText(display);
+
+  const qv = document.getElementById('question-visual');
+  qv.classList.toggle('solo-visual', current.blokjes === 'alleen');
+  if (current.blokjes !== 'uit') {
+    qv.innerHTML = renderVisual(key, current.track.visual, 1, true);
+    qv.classList.remove('hidden');
+  } else {
+    qv.innerHTML = '';
+    qv.classList.add('hidden');
+  }
   document.getElementById('session-progress').textContent =
     `${current.flow.index + 1} / ${current.flow.keys.length}`;
 
@@ -220,15 +243,22 @@ function showItem() {
 
 function startTimer() {
   const fill = document.getElementById('timer-fill');
+  const bar = document.getElementById('timer-bar');
   const duration = current.tier;
   const start = Date.now();
   fill.style.width = '100%';
+  bar.classList.remove('expired');
 
   clearTimer();
   current.timerId = setInterval(() => {
     const elapsed = Date.now() - start;
     fill.style.width = `${Math.max(0, 1 - elapsed / duration) * 100}%`;
-    if (elapsed >= duration) handleTimeout();
+    if (elapsed >= duration) {
+      // Time's up: don't move on — the item stays so he can finish it.
+      // The real elapsed time is recorded on answer; isFout() scores it.
+      clearTimer();
+      bar.classList.add('expired');
+    }
   }, 50);
 }
 
@@ -246,15 +276,6 @@ function handleAnswer(correct) {
   if (!r) return;
   clearTimer();
   updateFactStats(key, { correct, time });
-  afterEvent(r, key);
-}
-
-function handleTimeout() {
-  const key = currentKey();
-  const r = flowTimeout(current.flow);
-  if (!r) return;
-  clearTimer();
-  updateFactStats(key, { correct: false, time: current.tier });
   afterEvent(r, key);
 }
 
@@ -277,30 +298,43 @@ function showFeedback(key, kind, durationMs) {
   const fb = document.getElementById('feedback');
   // Stretch/compress the dot reveal with the chosen duration (1 = authored timing)
   const scale = durationMs / (kind === 'correct' ? 700 : 1500);
+  const isPractice = current.type === 'practice';
   fb.innerHTML = `
     <div class="feedback-answer ${kind}">${answerText}</div>
     ${renderVisual(key, current.track.visual, scale)}
+    ${isPractice ? '<button class="btn btn-primary btn-verder" id="btn-verder">Verder</button>' : ''}
   `;
   fb.classList.remove('hidden');
-  setTimeout(() => {
+
+  const proceed = () => {
     if (!current || current.flow !== flow) return; // session aborted
     fb.classList.add('hidden');
     const r = feedbackDone(current.flow);
     if (!r) return;
     if (r.done) endSession();
     else showItem();
-  }, durationMs);
+  };
+
+  if (isPractice) {
+    // Oefenen: the animation stays until Verder is tapped.
+    document.getElementById('btn-verder').addEventListener('click', proceed);
+  } else {
+    setTimeout(proceed, durationMs);
+  }
 }
 
 // --- Results ---
 
+function foutKeys() {
+  return current.flow.results.filter(r => isFout(r, current.tier)).map(r => r.key);
+}
+
 function endSession() {
   clearTimer();
-  const results = current.flow.results;
-  const errors = results.filter(r => !r.correct).map(r => r.key);
-  saveLastErrors(errors);
+  const fouten = foutKeys();
+  saveLastErrors(fouten);
 
-  current.passed = current.type === 'exam' && errors.length <= 1;
+  current.passed = current.type === 'exam' && fouten.length <= 1;
   if (current.passed) completeCell(current.track, current.level, current.tier);
 
   showScreen('results');
@@ -310,41 +344,53 @@ function endSession() {
 function renderResults() {
   const container = document.getElementById('screen-results');
   const results = current.flow.results;
-  const correct = results.filter(r => r.correct).length;
+  const fouten = foutKeys();
+  const goed = results.length - fouten.length;
   const total = results.length;
-  const clean = correct === total;
+  const clean = fouten.length === 0;
 
-  const rows = results.map(r => {
+  const rows = results.map((r, idx) => {
     const f = parseKey(r.key);
     const stats = getFactStats(r.key);
-    const slow = r.correct && r.time !== null && r.time > current.tier * 0.8;
-    const statusClass = r.correct ? (slow ? 'slow' : 'correct') : 'wrong';
+    const fout = isFout(r, current.tier);
+    const slow = r.correct && !r.override && r.time !== null && r.time > current.tier;
+    const statusClass = fout ? (slow ? 'slow' : 'wrong') : 'correct';
+    const icon = r.correct || r.override ? '✓' : '×';
+    const timeText = r.time === null ? '—'
+      : (r.time / 1000).toFixed(1) + 's' + (slow ? ' · te langzaam' : '');
     return `
-      <div class="result-row ${statusClass}">
-        <span class="result-icon">${r.correct ? '✓' : '×'}</span>
+      <div class="result-row ${statusClass} ${fout || r.override ? 'tappable' : ''}" data-idx="${idx}">
+        <span class="result-icon">${icon}</span>
         <span class="result-word">${f.display}</span>
-        <span class="result-time">${r.time === null ? '—' : (r.time / 1000).toFixed(1) + 's'}</span>
+        <span class="result-time">${timeText}${r.override ? ' · goedgekeurd' : ''}</span>
         <button class="btn-star ${stats.focused ? 'focused' : ''}" data-key="${r.key}">★</button>
       </div>`;
   }).join('');
 
   const header = current.type === 'exam'
-    ? (current.passed ? 'Gehaald!' : `${correct} / ${total} — nog niet gehaald`)
-    : `${correct} / ${total}`;
+    ? (current.passed ? 'Gehaald!' : `${goed} / ${total} — nog niet gehaald`)
+    : `${goed} / ${total}`;
 
   const toetsPrompt = current.type === 'practice' && clean
     ? '<button class="btn btn-primary" id="btn-start-toets">Klaar voor de toets?</button>'
     : '';
+  const foutjesBtn = fouten.length > 0
+    ? '<button class="btn btn-primary" id="btn-oefen-foutjes">Oefen de foutjes</button>'
+    : '';
 
   container.innerHTML = `
-    <div class="results-header"><h2>${header}</h2></div>
+    <div class="results-header"><h2>${header}</h2>
+      ${fouten.length ? '<p class="results-subtitle">Tik op een fout om hem alsnog goed te keuren</p>' : ''}
+    </div>
     <div class="results-list">${rows}</div>
+    ${foutjesBtn}
     ${toetsPrompt}
     <button class="btn btn-secondary" id="btn-back-home">Terug</button>
   `;
 
   container.querySelectorAll('.btn-star').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
       // The same fact can appear in several rows — sync every star for it
       const stats = toggleFocus(btn.dataset.key);
       container.querySelectorAll('.btn-star').forEach(b => {
@@ -352,6 +398,30 @@ function renderResults() {
       });
     });
   });
+
+  // Parent override: tap a fout row to approve it (and tap again to undo)
+  container.querySelectorAll('.result-row.tappable').forEach(row => {
+    row.addEventListener('click', () => {
+      const r = results[Number(row.dataset.idx)];
+      r.override = !r.override;
+      // A wrong answer flipped to goed (or back) also adjusts the fact stats;
+      // a slow-but-correct answer was already counted correct.
+      if (!r.correct) amendFactStat(r.key, r.override, r.time);
+      const remaining = foutKeys();
+      saveLastErrors(remaining);
+      if (current.type === 'exam' && !current.passed && remaining.length <= 1) {
+        current.passed = true;
+        completeCell(current.track, current.level, current.tier);
+      }
+      renderResults();
+    });
+  });
+
+  const foutjesEl = document.getElementById('btn-oefen-foutjes');
+  if (foutjesEl) {
+    foutjesEl.addEventListener('click', () =>
+      startSession(current.level, current.tier, 'practice', foutKeys()));
+  }
 
   const toetsBtn = document.getElementById('btn-start-toets');
   if (toetsBtn) {
@@ -414,6 +484,17 @@ function renderSettings() {
       </div>
       <div class="settings-item">
         <div>
+          <div class="settings-item-label">Blokjes bij oefenen</div>
+          <div class="settings-item-desc">Blokjes naast of in plaats van de som (toets altijd zonder)</div>
+        </div>
+      </div>
+      <div class="seg-row" id="blokjes-seg">
+        <button class="seg-btn${settings.blokjes === 'uit' ? ' active' : ''}" data-v="uit">Uit</button>
+        <button class="seg-btn${settings.blokjes === 'erbij' ? ' active' : ''}" data-v="erbij">Erbij</button>
+        <button class="seg-btn${settings.blokjes === 'alleen' ? ' active' : ''}" data-v="alleen">Alleen blokjes</button>
+      </div>
+      <div class="settings-item">
+        <div>
           <div class="settings-item-label">Voortgang overzetten</div>
           <div class="settings-item-desc">Kopieer deze tekst naar een ander apparaat</div>
         </div>
@@ -457,6 +538,14 @@ function renderSettings() {
   bindStepper('stepper', 'itemsPerSession', { min: 5, max: 50, step: 5 });
   bindStepper('anim-goed', 'correctAnimMs', { min: 0, max: 3000, step: 100 });
   bindStepper('anim-fout', 'wrongAnimMs', { min: 500, max: 5000, step: 100 });
+
+  document.querySelectorAll('#blokjes-seg .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      saveSettings({ ...getSettings(), blokjes: btn.dataset.v });
+      document.querySelectorAll('#blokjes-seg .seg-btn').forEach(b =>
+        b.classList.toggle('active', b === btn));
+    });
+  });
 
   document.getElementById('btn-export').addEventListener('click', () => {
     document.getElementById('export-area').value = exportState();

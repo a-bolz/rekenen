@@ -44,3 +44,11 @@ export function shuffle(list) {
   }
   return out;
 }
+
+// A result counts as fout when it was wrong OR answered slower than the
+// tier allows — unless the parent overrode it on the results screen.
+export function isFout(result, tierMs) {
+  if (result.override) return false;
+  if (!result.correct) return true;
+  return result.time != null && result.time > tierMs;
+}

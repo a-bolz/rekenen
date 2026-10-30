@@ -620,3 +620,19 @@ html, body {
 .btn-abort { position: fixed; top: 14px; right: 10px; z-index: 20; background: none; border: none; font-size: 26px; line-height: 1; color: #b0b0b0; padding: 8px 12px; cursor: pointer; }
 .settings-list { flex: 1; min-height: 0; overflow-y: auto; }
 .btn:disabled { opacity: 0.4; cursor: default; }
+/* Feedback batch: timer-expired state, question blokjes, verder, override rows, segmented control */
+.timer-bar.expired { background: #fdecea; }
+.timer-bar.expired .timer-fill { animation: none; }
+@keyframes bar-blink { 50% { opacity: 0.35; } }
+.timer-bar.expired { animation: bar-blink 1.2s ease-in-out infinite; }
+.question-visual { display: flex; justify-content: center; padding: 8px 16px 16px; }
+.question-visual.hidden { display: none; }
+.btn-verder { min-width: 200px; padding: 16px 32px; font-size: 20px; }
+.result-row.tappable { cursor: pointer; }
+.result-row.tappable:active { opacity: 0.7; }
+.seg-row { display: flex; gap: 8px; padding: 0 16px; }
+.seg-btn { flex: 1; padding: 12px 8px; font-size: 14px; border-radius: 10px; border: 2px solid #d0d0d0; background: #fff; }
+.seg-btn.active { border-color: var(--color-primary); background: #e8f0fe; font-weight: 700; }
+/* Blocks-only mode: the visual takes over the fact display's centering role */
+.question-visual.solo-visual { flex: 1; align-items: center; }
+.question-visual.solo-visual .visual { zoom: 1.5; flex-wrap: wrap; justify-content: center; }

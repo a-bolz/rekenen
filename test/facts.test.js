@@ -26,13 +26,13 @@ test('parseKey bond forward', () => {
   assert.equal(f.a, 7);
   assert.equal(f.c, 10);
   assert.equal(f.answer, 3);
-  assert.equal(f.display, '7 + □ = 10');
+  assert.equal(f.display, '7 + x = 10');
 });
 
 test('parseKey bond reversed', () => {
   const f = parseKey('10=7+_');
   assert.equal(f.answer, 3);
-  assert.equal(f.display, '10 = 7 + □');
+  assert.equal(f.display, '10 = 7 + x');
 });
 
 test('parseKey bond with answer 0', () => {
@@ -64,7 +64,7 @@ test('sampleEvenly picks max unique items from the input, in input order, determ
 import { TRACKS } from '../facts.js';
 
 test('four tracks with expected ids and tiers', () => {
-  assert.deepEqual(TRACKS.map(t => t.id), ['tot10', 'tot20', 'tot100', 'tafels']);
+  assert.deepEqual(TRACKS.map(t => t.id), ['tot10', 'tot20', 'tot100', 'tafels', 'drill']);
   assert.deepEqual(TRACKS[0].speedTiers, [8000, 5000, 3000, 2000]);
   assert.deepEqual(TRACKS[2].speedTiers, [12000, 8000, 5000, 3000]);
   assert.equal(TRACKS[0].visual, 'tenframe');
@@ -73,11 +73,12 @@ test('four tracks with expected ids and tiers', () => {
 });
 
 test('expected level counts per track', () => {
-  assert.deepEqual(TRACKS.map(t => t.levels.length), [7, 8, 7, 8]);
+  assert.deepEqual(TRACKS.map(t => t.levels.length), [7, 8, 7, 8, 2]);
 });
 
 test('every level: 8-25 items, no duplicates, all keys parse', () => {
   for (const track of TRACKS) {
+    if (track.id === 'drill') continue; // drill levels deliberately span the full table
     for (const level of track.levels) {
       assert.ok(level.keys.length >= 8 && level.keys.length <= 25,
         `${track.id} L${level.id} has ${level.keys.length} items`);
@@ -271,4 +272,28 @@ test('generation is deterministic', async () => {
     fresh.TRACKS.map(t => t.levels.map(l => l.keys)),
     TRACKS.map(t => t.levels.map(l => l.keys))
   );
+});
+
+test('splitsen levels contain no trivial 0/whole bonds', () => {
+  const tot10 = TRACKS[0];
+  for (const levelIdx of [0, 2, 3]) {
+    for (const key of tot10.levels[levelIdx].keys) {
+      const f = parseKey(key);
+      assert.ok(f.answer !== 0, `trivial bond (answer 0): ${key}`);
+      assert.ok(f.a !== 0, `trivial bond (a=0): ${key}`);
+    }
+  }
+});
+
+test('drill track spans the full plus and minus tables', () => {
+  const drill = TRACKS.find(t => t.id === 'drill');
+  assert.equal(drill.levels[0].keys.length, 100);
+  assert.equal(drill.levels[1].keys.length, 55);
+  for (const level of drill.levels) {
+    assert.equal(new Set(level.keys).size, level.keys.length);
+    for (const key of level.keys) {
+      const f = parseKey(key);
+      assert.ok(f.answer >= 0 && f.answer <= 18, key);
+    }
+  }
 });
