@@ -103,6 +103,20 @@ function initVandaag() {
   });
 }
 
+// --- Text fitting (ported from flitsen) ---
+
+function fitText(el) {
+  const maxWidth = el.parentElement.clientWidth - 32;
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  let size = 120;
+  el.style.fontSize = size + 'px';
+  while (range.getBoundingClientRect().width > maxWidth && size > 24) {
+    size -= 2;
+    el.style.fontSize = size + 'px';
+  }
+}
+
 // --- Session ---
 
 function startSession(levelId, tier, type) {
@@ -134,6 +148,7 @@ function renderSessionScreen() {
   const solo = current.mode === 'solo';
   container.innerHTML = `
     <div class="timer-bar"><div class="timer-fill" id="timer-fill"></div></div>
+    <button class="btn-abort" id="btn-abort">×</button>
     <div class="word-display" id="fact-display"></div>
     ${solo ? '<div id="keypad-mount"></div>' : `
     <div class="session-controls" id="session-controls">
@@ -143,6 +158,8 @@ function renderSessionScreen() {
     </div>`}
     <div class="session-progress" id="session-progress"></div>
   `;
+
+  document.getElementById('btn-abort').addEventListener('click', abortSession);
 
   if (solo) {
     current.keypad = createKeypad(entered => {
@@ -166,10 +183,20 @@ function currentKey() {
   return current.flow.keys[current.flow.index];
 }
 
+function abortSession() {
+  clearTimer();
+  document.getElementById('feedback').classList.add('hidden');
+  current = null;
+  showScreen('home');
+  renderMatrix();
+}
+
 function showItem() {
   const key = currentKey();
   const f = parseKey(key);
-  document.getElementById('fact-display').textContent = f.display;
+  const display = document.getElementById('fact-display');
+  display.textContent = f.display;
+  fitText(display);
   document.getElementById('session-progress').textContent =
     `${current.flow.index + 1} / ${current.flow.keys.length}`;
 
@@ -233,6 +260,7 @@ function afterEvent(r, key) {
 }
 
 function showFeedback(key, kind, durationMs) {
+  const flow = current.flow;
   const f = parseKey(key);
   const answerText = f.op === 'bond'
     ? f.display.replace('□', String(f.answer))
@@ -244,6 +272,7 @@ function showFeedback(key, kind, durationMs) {
   `;
   fb.classList.remove('hidden');
   setTimeout(() => {
+    if (!current || current.flow !== flow) return; // session aborted
     fb.classList.add('hidden');
     const r = feedbackDone(current.flow);
     if (!r) return;
