@@ -422,6 +422,12 @@ function renderSettings() {
       <button class="btn btn-secondary" id="btn-export">Exporteren</button>
       <button class="btn btn-secondary" id="btn-import">Importeren</button>
       <div id="import-status"></div>
+      <div class="settings-item">
+        <div>
+          <div class="settings-item-label">Versie</div>
+          <div class="settings-item-desc" id="version-label">…</div>
+        </div>
+      </div>
     </div>
     <button class="btn btn-primary" id="btn-settings-back" style="margin:16px;">Terug</button>
   `;
@@ -475,6 +481,13 @@ function renderSettings() {
     showScreen('home');
     renderMatrix();
   });
+
+  if ('caches' in window) {
+    caches.keys().then(keys => {
+      const label = document.getElementById('version-label');
+      if (label) label.textContent = keys.filter(k => k.startsWith('rekenen-')).join(', ') || 'nog niet offline opgeslagen';
+    });
+  }
 }
 
 // --- Init ---
@@ -487,4 +500,15 @@ document.getElementById('btn-settings').addEventListener('click', () => {
 });
 renderMatrix();
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+if ('serviceWorker' in navigator) {
+  // updateViaCache:'none' defeats the CDN's 10-minute cache on sw.js
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+    .then(reg => reg.update());
+  // When a new version activates, reload once so the update applies on
+  // this launch instead of the next — but never mid-session.
+  let hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) { hadController = true; return; } // first install
+    if (!current) location.reload();
+  });
+}
