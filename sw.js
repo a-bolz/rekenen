@@ -1,4 +1,4 @@
-const CACHE = 'rekenen-v5';
+const CACHE = 'rekenen-v6';
 const ASSETS = [
   '.', 'index.html', 'style.css', 'icon.svg', 'manifest.json',
   'app.js', 'facts.js', 'state.js', 'session.js', 'flow.js', 'keypad.js', 'visuals.js',
@@ -12,7 +12,9 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      // CacheStorage is origin-wide and flitsen/redeneren live on the same
+      // origin — only ever delete our own app's old caches.
+      Promise.all(keys.filter(k => k.startsWith('rekenen-') && k !== CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
